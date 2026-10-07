@@ -1,0 +1,1987 @@
+const KEYS = {
+    users: "fittrackUsers",
+    workouts: "fittrackWorkouts",
+    meals: "fittrackMeals",
+    goals: "fittrackGoals",
+    tips: "fittrackTips",
+    foods: "fittrackFoods",
+    data: "fittrackData",
+    history: "fittrackHistory",
+    current: "fittrackCurrentUser"
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const load = (k, d = []) =>
+    JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
+
+const save = (k, v) =>
+    localStorage.setItem(k, JSON.stringify(v));
+
+function seed() {
+    let users = load(KEYS.users, []);
+
+    if (!users.some(u => u.role === "admin")) {
+        users.push({
+            id: "admin-1",
+            name: "System Admin",
+            username: "admin@fittrack.com",
+            password: "admin123",
+            role: "admin",
+            createdAt: today()
+        });
+
+        save(KEYS.users, users);
+    }
+
+    if (!localStorage.getItem(KEYS.workouts))
+        save(KEYS.workouts, []);
+
+    if (!localStorage.getItem(KEYS.meals))
+        save(KEYS.meals, []);
+
+    if (!localStorage.getItem(KEYS.goals))
+        save(KEYS.goals, []);
+
+    if (!localStorage.getItem(KEYS.tips))
+        save(KEYS.tips, [
+            {
+                id: "t1",
+                text: "Stay hydrated and keep your activity consistent."
+            }
+        ]);
+
+    if (!localStorage.getItem(KEYS.foods))
+        save(KEYS.foods, [
+            { id: "f1", name: "Apple", calories: 95 },
+            { id: "f2", name: "Banana", calories: 105 },
+            { id: "f3", name: "Boiled Egg", calories: 78 }
+        ]);
+}
+
+seed();
+
+function toast(msg) {
+    const t = document.getElementById("toast");
+
+    t.textContent = msg;
+    t.style.display = "block";
+
+    setTimeout(() => {
+        t.style.display = "none";
+    }, 2500);
+}
+
+function showLogin(msg = "", ok = false) {
+    document.getElementById("loginCard").style.display = "block";
+    document.getElementById("signupCard").style.display = "none";
+
+    if (msg) {
+        const m = document.getElementById("loginMessage");
+
+        m.textContent = msg;
+        m.className = "auth-message " + (ok ? "success" : "error");
+    }
+}
+
+function showSignup() {
+    document.getElementById("loginCard").style.display = "none";
+    document.getElementById("signupCard").style.display = "block";
+}
+
+function signupUser(e) {
+    e.preventDefault();
+
+    let name = signupName.value.trim();
+    let username = signupEmail.value.trim();
+    let password = signupPassword.value;
+    let confirm = signupConfirm.value;
+
+    let users = load(KEYS.users, []);
+
+    if (password !== confirm)
+        return setMsg(
+            "signupMessage",
+            "Passwords do not match.",
+            "error"
+        );
+
+    if (
+        users.some(
+            u => u.username.toLowerCase() === username.toLowerCase()
+        )
+    )
+        return setMsg(
+            "signupMessage",
+            "Account already exists.",
+            "error"
+        );
+
+    users.push({
+        id: Date.now().toString(),
+        name,
+        username,
+        password,
+        role: "user",
+        createdAt: today()
+    });
+
+    save(KEYS.users, users);
+
+    e.target.reset();
+
+    showLogin(
+        "Account created successfully. Please login.",
+        true
+    );
+}
+
+function setMsg(id, msg, cls) {
+    const x = document.getElementById(id);
+
+    x.textContent = msg;
+    x.className = "auth-message " + cls;
+}
+
+function loginUser(e) {
+    e.preventDefault();
+
+    let username = loginEmail.value.trim().toLowerCase();
+    let password = loginPassword.value;
+
+    let user = load(KEYS.users, []).find(
+        u =>
+            u.username.toLowerCase() === username &&
+            u.password === password
+    );
+
+    if (!user)
+        return setMsg(
+            "loginMessage",
+            "Invalid username/email or password.",
+            "error"
+        );
+
+    localStorage.setItem(
+        KEYS.current,
+        JSON.stringify(user)
+    );
+
+    openApp(user);
+
+    setMsg("loginMessage", "", "");
+}
+
+function openApp(user) {
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("app").style.display = "flex";
+
+    loggedUser.textContent = user.name;
+
+    roleLabel.innerHTML =
+        user.role === "admin"
+            ? '<span class="admin-badge">ADMIN</span>'
+            : '<span class="user-badge">USER</span>';
+
+    if (user.role === "admin")
+        renderAdmin();
+    else
+        renderUser();
+}
+
+function logoutUser() {
+    localStorage.removeItem(KEYS.current);
+
+    document.getElementById("app").style.display = "none";
+    document.getElementById("loginScreen").style.display = "flex";
+
+    showLogin();
+}
+
+function currentUser() {
+    return JSON.parse(
+        localStorage.getItem(KEYS.current) || "null"
+    );
+}
+
+function nav(items) {
+    document.getElementById("nav").innerHTML =
+        items
+            .map(
+                (x, i) =>
+                    `<a href="#"
+                        class="${i === 0 ? "active" : ""}"
+                        onclick="showPage('${x.id}',this);return false">
+                        ${x.icon} ${x.name}
+                    </a>`
+            )
+            .join("");
+}
+
+function showPage(id, el) {
+    document
+        .querySelectorAll(".nav a")
+        .forEach(a => a.classList.remove("active"));
+
+    el.classList.add("active");
+
+    if (currentUser().role === "admin")
+        adminPage(id);
+    else
+        userPage(id);
+}
+
+function renderUser() {
+    nav([
+        { id: "dashboard", name: "Dashboard", icon: "🏠" },
+        { id: "activity", name: "Activity", icon: "📊" },
+        { id: "wearable", name: "Smartwatch", icon: "⌚" },
+        { id: "history", name: "History", icon: "📅" },
+        { id: "goals", name: "Goals", icon: "🎯" }
+    ]);
+
+    userPage("dashboard");
+}
+
+function userPage(id) {
+    const pages = {
+        dashboard: userDashboard,
+        activity: userActivity,
+        wearable: userWearable,
+        history: userHistory,
+        goals: userGoals
+    };
+
+    pages[id]();
+}
+
+function userDashboard() {
+    const d =
+        load(KEYS.data, {})[today()] || {
+            steps: 0,
+            calories: 0,
+            distance: 0,
+            heartRate: null,
+            water: 0,
+            workout: 0,
+            sleep: 0
+        };
+
+    const goals = load(KEYS.goals, [])
+        .filter(g => g.userId === currentUser().id);
+
+    const tips = load(KEYS.tips, []);
+
+    main.innerHTML = `
+        <div class="top">
+            <div>
+                <h1>Fitness Dashboard</h1>
+                <div class="date">
+                    ${new Date().toDateString()}
+                </div>
+            </div>
+
+            <div class="connection">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="connectionText">
+                    Bluetooth not connected
+                </span>
+            </div>
+        </div>
+
+        <div class="grid">
+
+            <div class="card">
+                <div class="label">Steps</div>
+                <div class="metric">
+                    ${Number(d.steps).toLocaleString()}
+                </div>
+                <div class="small">
+                    Goal: 10,000
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="label">Heart Rate</div>
+                <div class="metric">
+                    ${d.heartRate || "--"}
+                </div>
+                <div class="small">
+                    BPM
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="label">Calories</div>
+                <div class="metric">
+                    ${Math.round(d.calories)}
+                </div>
+                <div class="small">
+                    Today
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="label">Distance</div>
+                <div class="metric">
+                    ${Number(d.distance).toFixed(1)} km
+                </div>
+                <div class="small">
+                    Estimated
+                </div>
+            </div>
+
+        </div>
+
+        <div class="two section">
+
+            <div class="card">
+
+                <h2 class="section-title">
+                    Today's Progress
+                </h2>
+
+                ${goalRow("Steps", d.steps, 10000)}
+                ${goalRow("Water", d.water, 8)}
+                ${goalRow("Workout", d.workout, 30)}
+                ${goalRow("Sleep", d.sleep, 8)}
+
+            </div>
+
+            <div class="card">
+
+                <h2 class="section-title">
+                    Tips
+                </h2>
+
+                ${
+                    tips
+                        .slice(-4)
+                        .reverse()
+                        .map(
+                            t =>
+                                `<div class="notice">
+                                    ${escapeHtml(t.text)}
+                                </div>`
+                        )
+                        .join("") ||
+                    "<p class='small'>No tips yet.</p>"
+                }
+
+            </div>
+
+        </div>
+
+        <div class="card section">
+
+            <h2 class="section-title">
+                7-Day Steps
+            </h2>
+
+            ${chartHTML()}
+
+        </div>
+    `;
+}
+
+function goalRow(name, val, goal) {
+    let p = Math.min(
+        100,
+        Math.round((Number(val) || 0) / goal * 100)
+    );
+
+    return `
+        <div class="goal">
+
+            <div class="goal-head">
+                <span>${name}</span>
+                <b>${val}/${goal}</b>
+            </div>
+
+            <div class="progress">
+                <div class="bar" style="width:${p}%"></div>
+            </div>
+
+        </div>
+    `;
+}
+
+function chartHTML() {
+    let h = load(KEYS.history, [])
+        .filter(x => x.userId === currentUser().id)
+        .slice(-7);
+
+    if (!h.length)
+        return "<p class='small'>No activity history yet.</p>";
+
+    let max = Math.max(
+        ...h.map(x => x.steps),
+        1000
+    );
+
+    return `
+        <div class="chart">
+
+            ${
+                h
+                    .map(
+                        x => `
+                            <div class="barcol">
+
+                                <b>${x.steps}</b>
+
+                                <div class="chartbar"
+                                    style="height:${Math.max(
+                                        5,
+                                        x.steps / max * 180
+                                    )}px">
+                                </div>
+
+                                <span>${x.date.slice(5)}</span>
+
+                            </div>
+                        `
+                    )
+                    .join("")
+            }
+
+        </div>
+    `;
+}
+
+function userActivity() {
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Activity</h1>
+
+                <div class="date">
+                    Log today's fitness information
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="two">
+
+            <div class="card">
+
+                <h2 class="section-title">
+                    Log Workout
+                </h2>
+
+                <form onsubmit="addWorkout(event)">
+
+                    <div class="formgrid">
+
+                        <div>
+
+                            <label>Exercise</label>
+
+                            <input
+                                id="wType"
+                                required
+                                placeholder="Running">
+
+                        </div>
+
+                        <div>
+
+                            <label>Duration (min)</label>
+
+                            <input
+                                id="wDuration"
+                                type="number"
+                                min="1"
+                                required>
+
+                        </div>
+
+                        <div>
+
+                            <label>Calories Burned</label>
+
+                            <input
+                                id="wCalories"
+                                type="number"
+                                min="0"
+                                required>
+
+                        </div>
+
+                    </div>
+
+                    <button>
+                        Save Workout
+                    </button>
+
+                </form>
+
+            </div>
+
+            <div class="card">
+
+                <h2 class="section-title">
+                    Daily Health
+                </h2>
+
+                <div class="formgrid">
+
+                    <div>
+
+                        <label>Steps</label>
+
+                        <input
+                            id="aSteps"
+                            type="number"
+                            min="0">
+
+                    </div>
+
+                    <div>
+
+                        <label>Water (glasses)</label>
+
+                        <input
+                            id="aWater"
+                            type="number"
+                            min="0">
+
+                    </div>
+
+                    <div>
+
+                        <label>Sleep (hours)</label>
+
+                        <input
+                            id="aSleep"
+                            type="number"
+                            min="0"
+                            step=".1">
+
+                    </div>
+
+                    <div>
+
+                        <label>Distance (km)</label>
+
+                        <input
+                            id="aDistance"
+                            type="number"
+                            min="0"
+                            step=".1">
+
+                    </div>
+
+                </div>
+
+                <button onclick="saveDaily()">
+                    Save Daily Data
+                </button>
+
+            </div>
+
+        </div>
+
+        <div class="card section">
+
+            <h2 class="section-title">
+                My Recent Workouts
+            </h2>
+
+            ${userWorkoutTable()}
+
+        </div>
+    `;
+}
+
+function addWorkout(e) {
+    e.preventDefault();
+
+    let a = load(KEYS.workouts, []);
+
+    a.push({
+        id: Date.now().toString(),
+        userId: currentUser().id,
+        type: wType.value,
+        duration: Number(wDuration.value),
+        calories: Number(wCalories.value),
+        date: today()
+    });
+
+    save(KEYS.workouts, a);
+
+    let d = getTodayData();
+
+    d.workout += Number(wDuration.value);
+    d.calories += Number(wCalories.value);
+
+    saveToday(d);
+    saveHistory(d);
+
+    toast("Workout saved");
+
+    userActivity();
+}
+
+function saveDaily() {
+    let d = getTodayData();
+
+    d.steps = Number(aSteps.value || d.steps);
+    d.water = Number(aWater.value || d.water);
+    d.sleep = Number(aSleep.value || d.sleep);
+    d.distance = Number(aDistance.value || d.distance);
+
+    saveToday(d);
+    saveHistory(d);
+
+    toast("Daily data saved");
+
+    userDashboard();
+}
+
+function getTodayData() {
+    let all = load(KEYS.data, {});
+
+    return (
+        all[today()] || {
+            steps: 0,
+            calories: 0,
+            distance: 0,
+            heartRate: null,
+            water: 0,
+            workout: 0,
+            sleep: 0
+        }
+    );
+}
+
+function saveToday(d) {
+    let all = load(KEYS.data, {});
+
+    all[today()] = d;
+
+    save(KEYS.data, all);
+}
+
+function saveHistory(d) {
+    let h = load(KEYS.history, [])
+        .filter(
+            x =>
+                !(
+                    x.userId === currentUser().id &&
+                    x.date === today()
+                )
+        );
+
+    h.push({
+        userId: currentUser().id,
+        date: today(),
+        steps: d.steps,
+        calories: d.calories,
+        workout: d.workout
+    });
+
+    save(KEYS.history, h);
+}
+
+function userWorkoutTable() {
+    let a = load(KEYS.workouts, [])
+        .filter(x => x.userId === currentUser().id)
+        .slice(-10)
+        .reverse();
+
+    if (!a.length)
+        return "<p class='small'>No workouts logged.</p>";
+
+    return `
+        <div class="table-wrap">
+
+            <table class="table">
+
+                <tr>
+                    <th>Date</th>
+                    <th>Exercise</th>
+                    <th>Duration</th>
+                    <th>Calories</th>
+                </tr>
+
+                ${
+                    a
+                        .map(
+                            x => `
+                                <tr>
+                                    <td>${x.date}</td>
+                                    <td>${escapeHtml(x.type)}</td>
+                                    <td>${x.duration} min</td>
+                                    <td>${x.calories}</td>
+                                </tr>
+                            `
+                        )
+                        .join("")
+                }
+
+            </table>
+
+        </div>
+    `;
+}
+
+async function connectWearable() {
+    if (!navigator.bluetooth) {
+        toast(
+            "Web Bluetooth is not supported in this browser."
+        );
+        return;
+    }
+
+    try {
+        const device =
+            await navigator.bluetooth.requestDevice({
+                acceptAllDevices: true,
+                optionalServices: [
+                    "heart_rate",
+                    "battery_service",
+                    "device_information"
+                ]
+            });
+
+        const server = await device.gatt.connect();
+
+        let d = getTodayData();
+
+        try {
+            const s =
+                await server.getPrimaryService("heart_rate");
+
+            const c =
+                await s.getCharacteristic(
+                    "heart_rate_measurement"
+                );
+
+            c.addEventListener(
+                "characteristicvaluechanged",
+                e => {
+                    let v = e.target.value;
+
+                    let flags = v.getUint8(0);
+
+                    let hr =
+                        flags & 1
+                            ? v.getUint16(1, true)
+                            : v.getUint8(1);
+
+                    d = getTodayData();
+
+                    d.heartRate = hr;
+
+                    saveToday(d);
+
+                    userDashboard();
+                }
+            );
+
+            await c.startNotifications();
+
+        } catch (e) {}
+
+        try {
+            const s =
+                await server.getPrimaryService(
+                    "battery_service"
+                );
+
+            const c =
+                await s.getCharacteristic(
+                    "battery_level"
+                );
+
+            let v = await c.readValue();
+
+            toast(
+                "Connected: " +
+                device.name +
+                " | Battery " +
+                v.getUint8(0) +
+                "%"
+            );
+
+        } catch (e) {
+
+            toast(
+                "Connected: " +
+                (device.name || "BLE device")
+            );
+        }
+
+        const dot =
+            document.getElementById("statusDot");
+
+        if (dot)
+            dot.classList.add("on");
+
+        const ct =
+            document.getElementById("connectionText");
+
+        if (ct)
+            ct.textContent =
+                "Connected: " +
+                (device.name || "BLE device");
+
+    } catch (e) {
+
+        toast(
+            "Bluetooth connection cancelled or failed."
+        );
+    }
+}
+
+function demoWearable() {
+    let d = getTodayData();
+
+    d.heartRate =
+        72 + Math.floor(Math.random() * 12);
+
+    saveToday(d);
+
+    userDashboard();
+
+    toast(
+        "Demo smartwatch data updated"
+    );
+}
+
+function userWearable() {
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Smartwatch</h1>
+
+                <div class="date">
+                    Connect a compatible BLE device
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <div class="devicebox">
+
+                <div>
+
+                    <div class="device-name">
+                        ⌚ Bluetooth / BLE Wearable
+                    </div>
+
+                    <div class="device-meta">
+                        Web Bluetooth can read standard BLE services when the smartwatch exposes them.
+                    </div>
+
+                </div>
+
+                <div>
+
+                    <button onclick="connectWearable()">
+                        Connect Device
+                    </button>
+
+                    <button
+                        class="secondary"
+                        onclick="demoWearable()"
+                        style="margin-left:6px">
+                        Demo Data
+                    </button>
+
+                </div>
+
+            </div>
+
+            <div class="notice">
+
+                <b>Important:</b>
+
+                This is BLE Web Bluetooth support,
+                not universal support for every smartwatch.
+
+                Heart-rate data works when the device exposes
+                the standard Heart Rate Service.
+
+                Steps, sleep and calories may require
+                a manufacturer API.
+
+            </div>
+
+        </div>
+
+        <div class="card section">
+
+            <h2 class="section-title">
+                Current Heart Rate
+            </h2>
+
+            <div class="metric">
+                ${getTodayData().heartRate || "--"} BPM
+            </div>
+
+        </div>
+    `;
+}
+
+function userHistory() {
+    let h = load(KEYS.history, [])
+        .filter(x => x.userId === currentUser().id)
+        .reverse();
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>History</h1>
+
+                <div class="date">
+                    Your recorded activity
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            ${
+                h.length
+                    ? `
+                        <div class="table-wrap">
+
+                            <table class="table">
+
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Steps</th>
+                                    <th>Calories</th>
+                                    <th>Workout</th>
+                                </tr>
+
+                                ${
+                                    h
+                                        .map(
+                                            x => `
+                                                <tr>
+                                                    <td>${x.date}</td>
+                                                    <td>${x.steps}</td>
+                                                    <td>${Math.round(x.calories)}</td>
+                                                    <td>${x.workout} min</td>
+                                                </tr>
+                                            `
+                                        )
+                                        .join("")
+                                }
+
+                            </table>
+
+                        </div>
+                    `
+                    : "<p class='small'>No history available.</p>"
+            }
+
+        </div>
+    `;
+}
+
+function userGoals() {
+    let a = load(KEYS.goals, [])
+        .filter(x => x.userId === currentUser().id);
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Goals</h1>
+
+                <div class="date">
+                    Create and track personal goals
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <h2 class="section-title">
+                Add Goal
+            </h2>
+
+            <form onsubmit="addGoal(event)">
+
+                <div class="formgrid">
+
+                    <div>
+
+                        <label>Goal Type</label>
+
+                        <select id="gType">
+                            <option>Steps</option>
+                            <option>Workout</option>
+                            <option>Water</option>
+                            <option>Sleep</option>
+                        </select>
+
+                    </div>
+
+                    <div>
+
+                        <label>Target</label>
+
+                        <input
+                            id="gTarget"
+                            type="number"
+                            min="1"
+                            required>
+
+                    </div>
+
+                </div>
+
+                <button>
+                    Add Goal
+                </button>
+
+            </form>
+
+        </div>
+
+        <div class="card section">
+
+            <h2 class="section-title">
+                My Goals
+            </h2>
+
+            ${
+                a.length
+                    ? a
+                        .map(
+                            g => `
+                                <div class="notice">
+                                    <b>${escapeHtml(g.type)}</b>
+                                    —
+                                    Target: ${g.target}
+                                </div>
+                            `
+                        )
+                        .join("")
+                    : "<p class='small'>No goals yet.</p>"
+            }
+
+        </div>
+    `;
+}
+
+function addGoal(e) {
+    e.preventDefault();
+
+    let a = load(KEYS.goals, []);
+
+    a.push({
+        id: Date.now().toString(),
+        userId: currentUser().id,
+        type: gType.value,
+        target: Number(gTarget.value),
+        status: "active",
+        date: today()
+    });
+
+    save(KEYS.goals, a);
+
+    toast("Goal added");
+
+    userGoals();
+}
+
+/* =========================
+   ADMIN SECTION
+========================= */
+
+function renderAdmin() {
+    nav([
+        { id: "dashboard", name: "Admin Dashboard", icon: "🏠" },
+        { id: "users", name: "Manage Users", icon: "👥" },
+        { id: "workouts", name: "Workout Library", icon: "🏋️" },
+        { id: "foods", name: "Food Data", icon: "🍎" },
+        { id: "reports", name: "Reports", icon: "📊" },
+        { id: "tips", name: "Publish Tips", icon: "💡" }
+    ]);
+
+    adminPage("dashboard");
+}
+
+function adminPage(id) {
+    ({
+        dashboard: adminDashboard,
+        users: adminUsers,
+        workouts: adminWorkouts,
+        foods: adminFoods,
+        reports: adminReports,
+        tips: adminTips
+    }[id])();
+}
+
+function adminDashboard() {
+    let users = load(KEYS.users, []);
+    let w = load(KEYS.workouts, []);
+    let g = load(KEYS.goals, []);
+    let m = load(KEYS.meals, []);
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Admin Dashboard</h1>
+
+                <div class="date">
+                    System overview and management
+                </div>
+
+            </div>
+
+            <span class="admin-badge">
+                ADMIN CONTROL PANEL
+            </span>
+
+        </div>
+
+        <div class="grid">
+
+            <div class="card">
+
+                <div class="label">
+                    Total Users
+                </div>
+
+                <div class="metric">
+                    ${users.filter(u => u.role === "user").length}
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="label">
+                    Workouts Logged
+                </div>
+
+                <div class="metric">
+                    ${w.length}
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="label">
+                    Active Goals
+                </div>
+
+                <div class="metric">
+                    ${g.filter(x => x.status === "active").length}
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="label">
+                    Meals Logged
+                </div>
+
+                <div class="metric">
+                    ${m.length}
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="two section">
+
+            <div class="card">
+
+                <h2 class="section-title">
+                    Admin Responsibilities
+                </h2>
+
+                <div class="notice">
+                    👥 Manage registered users
+                </div>
+
+                <div class="notice">
+                    🏋️ Manage workout library
+                </div>
+
+                <div class="notice">
+                    🍎 Maintain food and calorie data
+                </div>
+
+                <div class="notice">
+                    📊 Monitor reports and activity
+                </div>
+
+                <div class="notice">
+                    💡 Publish health tips
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <h2 class="section-title">
+                    Quick Actions
+                </h2>
+
+                <button onclick="adminUsers()">
+                    Manage Users
+                </button>
+
+                <button
+                    onclick="adminWorkouts()"
+                    style="margin:7px">
+                    Workout Library
+                </button>
+
+                <button onclick="adminFoods()">
+                    Food Data
+                </button>
+
+                <button
+                    onclick="adminReports()"
+                    style="margin:7px">
+                    View Reports
+                </button>
+
+                <button onclick="adminTips()">
+                    Publish Tip
+                </button>
+
+            </div>
+
+        </div>
+    `;
+}
+
+function adminUsers() {
+    let users = load(KEYS.users, []);
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Manage Users</h1>
+
+                <div class="date">
+                    View, search and remove registered users
+                </div>
+
+            </div>
+
+            <input
+                class="search"
+                id="userSearch"
+                placeholder="Search users..."
+                oninput="filterUsers()">
+
+        </div>
+
+        <div class="card">
+
+            <div class="table-wrap">
+
+                <table class="table">
+
+                    <thead>
+
+                        <tr>
+                            <th>Name</th>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="userRows">
+                        ${userRows(users)}
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+    `;
+}
+
+function userRows(users) {
+    return users
+        .map(
+            u => `
+                <tr>
+
+                    <td>${escapeHtml(u.name)}</td>
+
+                    <td>${escapeHtml(u.username)}</td>
+
+                    <td>
+                        ${
+                            u.role === "admin"
+                                ? '<span class="admin-badge">ADMIN</span>'
+                                : '<span class="user-badge">USER</span>'
+                        }
+                    </td>
+
+                    <td>${u.createdAt || "-"}</td>
+
+                    <td>
+
+                        ${
+                            u.role === "user"
+                                ? `
+                                    <button
+                                        class="danger"
+                                        onclick="removeUser('${u.id}')">
+                                        Remove
+                                    </button>
+                                `
+                                : "Protected"
+                        }
+
+                    </td>
+
+                </tr>
+            `
+        )
+        .join("");
+}
+
+function filterUsers() {
+    let q =
+        document
+            .getElementById("userSearch")
+            .value
+            .toLowerCase();
+
+    let a = load(KEYS.users, [])
+        .filter(u =>
+            (u.name + " " + u.username + " " + u.role)
+                .toLowerCase()
+                .includes(q)
+        );
+
+    document.getElementById("userRows").innerHTML =
+        userRows(a);
+}
+
+function removeUser(id) {
+    if (!confirm("Remove this user?"))
+        return;
+
+    save(
+        KEYS.users,
+        load(KEYS.users, [])
+            .filter(u => u.id !== id)
+    );
+
+    save(
+        KEYS.workouts,
+        load(KEYS.workouts, [])
+            .filter(x => x.userId !== id)
+    );
+
+    save(
+        KEYS.goals,
+        load(KEYS.goals, [])
+            .filter(x => x.userId !== id)
+    );
+
+    toast("User removed");
+
+    adminUsers();
+}
+
+function adminWorkouts() {
+    let a = load(KEYS.workouts, []);
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Workout Library</h1>
+
+                <div class="date">
+                    Admin can add exercise types and calorie values
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <form onsubmit="addLibraryWorkout(event)">
+
+                <div class="formgrid">
+
+                    <div>
+
+                        <label>Exercise Type</label>
+
+                        <input
+                            id="libName"
+                            required
+                            placeholder="Cycling">
+
+                    </div>
+
+                    <div>
+
+                        <label>Calories / 30 min</label>
+
+                        <input
+                            id="libCal"
+                            type="number"
+                            min="0"
+                            required>
+
+                    </div>
+
+                </div>
+
+                <button>
+                    Add Workout Type
+                </button>
+
+            </form>
+
+        </div>
+
+        <div class="card section">
+
+            <table class="table">
+
+                <tr>
+                    <th>Exercise</th>
+                    <th>Calories / 30 min</th>
+                    <th>Action</th>
+                </tr>
+
+                ${
+                    a
+                        .map(
+                            x => `
+                                <tr>
+
+                                    <td>
+                                        ${escapeHtml(x.type)}
+                                    </td>
+
+                                    <td>
+                                        ${x.calories}
+                                    </td>
+
+                                    <td>
+
+                                        <button
+                                            class="danger"
+                                            onclick="deleteWorkout('${x.id}')">
+                                            Delete
+                                        </button>
+
+                                    </td>
+
+                                </tr>
+                            `
+                        )
+                        .join("") ||
+                    `
+                        <tr>
+                            <td colspan="3">
+                                No workout library entries yet.
+                            </td>
+                        </tr>
+                    `
+                }
+
+            </table>
+
+        </div>
+    `;
+}
+
+function addLibraryWorkout(e) {
+    e.preventDefault();
+
+    let a = load(KEYS.workouts, []);
+
+    a.push({
+        id: "lib-" + Date.now(),
+        type: libName.value,
+        calories: Number(libCal.value),
+        library: true
+    });
+
+    save(KEYS.workouts, a);
+
+    toast("Workout type added");
+
+    adminWorkouts();
+}
+
+function deleteWorkout(id) {
+    save(
+        KEYS.workouts,
+        load(KEYS.workouts, [])
+            .filter(x => x.id !== id)
+    );
+
+    adminWorkouts();
+}
+
+function adminFoods() {
+    let a = load(KEYS.foods, []);
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Food Data</h1>
+
+                <div class="date">
+                    Maintain food items and calorie information
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <form onsubmit="addFood(event)">
+
+                <div class="formgrid">
+
+                    <div>
+
+                        <label>Food Item</label>
+
+                        <input
+                            id="foodName"
+                            required>
+
+                    </div>
+
+                    <div>
+
+                        <label>Calories</label>
+
+                        <input
+                            id="foodCal"
+                            type="number"
+                            min="0"
+                            required>
+
+                    </div>
+
+                </div>
+
+                <button>
+                    Add Food
+                </button>
+
+            </form>
+
+        </div>
+
+        <div class="card section">
+
+            <table class="table">
+
+                <tr>
+                    <th>Food</th>
+                    <th>Calories</th>
+                    <th>Action</th>
+                </tr>
+
+                ${
+                    a
+                        .map(
+                            x => `
+                                <tr>
+
+                                    <td>
+                                        ${escapeHtml(x.name)}
+                                    </td>
+
+                                    <td>
+                                        ${x.calories}
+                                    </td>
+
+                                    <td>
+
+                                        <button
+                                            class="danger"
+                                            onclick="deleteFood('${x.id}')">
+                                            Delete
+                                        </button>
+
+                                    </td>
+
+                                </tr>
+                            `
+                        )
+                        .join("")
+                }
+
+            </table>
+
+        </div>
+    `;
+}
+
+function addFood(e) {
+    e.preventDefault();
+
+    let a = load(KEYS.foods, []);
+
+    a.push({
+        id: "f-" + Date.now(),
+        name: foodName.value,
+        calories: Number(foodCal.value)
+    });
+
+    save(KEYS.foods, a);
+
+    toast("Food added");
+
+    adminFoods();
+}
+
+function deleteFood(id) {
+    save(
+        KEYS.foods,
+        load(KEYS.foods, [])
+            .filter(x => x.id !== id)
+    );
+
+    adminFoods();
+}
+
+function adminReports() {
+    let users =
+        load(KEYS.users, [])
+            .filter(u => u.role === "user");
+
+    let w = load(KEYS.workouts, []);
+    let h = load(KEYS.history, []);
+
+    let rows = users
+        .map(u => {
+
+            let hw =
+                h.filter(x => x.userId === u.id);
+
+            let ww =
+                w.filter(x => x.userId === u.id);
+
+            let steps =
+                hw.reduce(
+                    (s, x) => s + Number(x.steps || 0),
+                    0
+                );
+
+            return `
+                <tr>
+
+                    <td>
+                        ${escapeHtml(u.name)}
+                    </td>
+
+                    <td>
+                        ${ww.length}
+                    </td>
+
+                    <td>
+                        ${steps.toLocaleString()}
+                    </td>
+
+                    <td>
+                        ${ww.reduce(
+                            (s, x) =>
+                                s + Number(x.calories || 0),
+                            0
+                        )}
+                    </td>
+
+                </tr>
+            `;
+        })
+        .join("");
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Reports & Activity</h1>
+
+                <div class="date">
+                    Overall user activity and goal progress
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="grid">
+
+            <div class="card">
+
+                <div class="label">
+                    Registered Users
+                </div>
+
+                <div class="metric">
+                    ${users.length}
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="label">
+                    Total Workouts
+                </div>
+
+                <div class="metric">
+                    ${w.filter(x => !x.library).length}
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="label">
+                    Total Steps Recorded
+                </div>
+
+                <div class="metric">
+                    ${h.reduce(
+                        (s, x) =>
+                            s + Number(x.steps || 0),
+                        0
+                    ).toLocaleString()}
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="label">
+                    Workout Calories
+                </div>
+
+                <div class="metric">
+                    ${w
+                        .filter(x => !x.library)
+                        .reduce(
+                            (s, x) =>
+                                s + Number(x.calories || 0),
+                            0
+                        )}
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card section">
+
+            <h2 class="section-title">
+                User Activity Report
+            </h2>
+
+            <div class="table-wrap">
+
+                <table class="table">
+
+                    <tr>
+                        <th>User</th>
+                        <th>Workouts</th>
+                        <th>Steps</th>
+                        <th>Calories Burned</th>
+                    </tr>
+
+                    ${
+                        rows ||
+                        `
+                            <tr>
+                                <td colspan="4">
+                                    No user activity yet.
+                                </td>
+                            </tr>
+                        `
+                    }
+
+                </table>
+
+            </div>
+
+        </div>
+    `;
+}
+
+function adminTips() {
+    let a = load(KEYS.tips, []);
+
+    main.innerHTML = `
+
+        <div class="top">
+
+            <div>
+
+                <h1>Publish Tips</h1>
+
+                <div class="date">
+                    Tips added here appear on user dashboards
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <form onsubmit="addTip(event)">
+
+                <label>
+                    Health / Fitness Tip
+                </label>
+
+                <input
+                    id="tipText"
+                    required
+                    placeholder="Drink enough water throughout the day.">
+
+                <button>
+                    Publish Tip
+                </button>
+
+            </form>
+
+        </div>
+
+        <div class="card section">
+
+            <h2 class="section-title">
+                Published Tips
+            </h2>
+
+            ${
+                a
+                    .slice()
+                    .reverse()
+                    .map(
+                        x => `
+                            <div class="notice">
+
+                                ${escapeHtml(x.text)}
+
+                                <button
+                                    class="danger"
+                                    style="float:right;padding:6px 9px"
+                                    onclick="deleteTip('${x.id}')">
+                                    Delete
+                                </button>
+
+                            </div>
+                        `
+                    )
+                    .join("")
+            }
+
+        </div>
+    `;
+}
+
+function addTip(e) {
+    e.preventDefault();
+
+    let a = load(KEYS.tips, []);
+
+    a.push({
+        id: "t-" + Date.now(),
+        text: tipText.value
+    });
+
+    save(KEYS.tips, a);
+
+    toast("Tip published");
+
+    adminTips();
+}
+
+function deleteTip(id) {
+    save(
+        KEYS.tips,
+        load(KEYS.tips, [])
+            .filter(x => x.id !== id)
+    );
+
+    adminTips();
+}
+
+function escapeHtml(s) {
+    return String(s ?? "")
+        .replace(
+            /[&<>"']/g,
+            m =>
+                ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#039;"
+                }[m])
+        );
+}
+
+window.addEventListener(
+    "load",
+    () => {
+        let u = currentUser();
+
+        if (u)
+            openApp(u);
+    }
+);
